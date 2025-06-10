@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hand Gesture Sphere Control</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+      video {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <video id="video" autoplay playsinline width="640" height="480"></video>
+    <script type="module">
+      import * as THREE from 'https://cdn.skypack.dev/three@0.152.2';
+      import { Hands } from 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js';
+      import { Camera } from 'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js';
+
+      const videoElement = document.getElementById('video');
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.z = 5;
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.body.appendChild(renderer.domElement);
+
+      const geometry = new THREE.SphereGeometry(1, 64, 64);
+      const material = new THREE.MeshStandardMaterial({
+        color: 0x00ffff,
+        emissive: 0x00ffff,
+        emissiveIntensity: 0.7,
+        metalness: 0.5,
+        roughness: 0.1,
+      });
+      const sphere = new THREE.Mesh(geometry, material);
+      scene.add(sphere);
+
+      const light = new THREE.PointLight(0xffffff, 1, 100);
+      light.position.set(10, 10, 10);
+      scene.add(light);
+
+      let targetScale = 1;
+      let targetColor = new THREE.Color(0x00ffff);
+
+      const hands = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+      });
+
+      hands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.7,
+        minTrackingConfidence: 0.7,
+      });
+
+      hands.onResults((results) => {
+        if (results.multiHandLandmarks.length > 0) {
+          const landmarks = results.multiHandLandmarks[0];
+
+          const isOpenPalm = landmarks[8].y < landmarks[6].y && landmarks[12].y < landmarks[10].y;
+          const isFist = Math.abs(landmarks[8].y - landmarks[6].y) < 0.02 &&
+                         Math.abs(landmarks[12].y - landmarks[10].y) < 0.02;
+          const isPointing = landmarks[8].y < landmarks[6].y && landmarks[12].y > landmarks[10].y;
+
+          if (isOpenPalm) {
+            targetScale = 2;
+            targetColor.set(0xff0000);
+          } else if (isFist) {
+            targetScale = 0.5;
+            targetColor.set(0x0000ff);
+          } else if (isPointing) {
+            sphere.rotation.y += 0.05;
+          }
+        }
+      });
+
+      const cam = new Camera(videoElement, {
+        onFrame: async () => {
+          await hands.send({ image: videoElement });
+        },
+        width: 640,
+        height: 480,
+      });
+      cam.start();
+
+      function animate() {
+        requestAnimationFrame(animate);
+
+        sphere.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.1);
+        material.color.lerp(targetColor, 0.1);
+        material.emissive.lerp(targetColor, 0.1);
+
+        renderer.render(scene, camera);
+      }
+
+      animate();
+    </script>
+  </body>
+</html>
